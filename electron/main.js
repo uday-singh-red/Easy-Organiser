@@ -1,6 +1,6 @@
 const { app, BrowserWindow, ipcMain } = require('electron');// electron require some methods for operations
 
-
+const os = require("os");
 const path = require('path');
 const fs = require('fs');
 const chokidar = require('chokidar');
@@ -10,7 +10,32 @@ let mainWindow;// ak variable declare hua ha bs
 let watcher = null;
 let isOrganise = false;
 
-const downloadsDir = path.join(require('os').homedir(), 'Downloads');// home directory from os
+
+
+const HOME = os.homedir();
+
+function getHomeFolders() {
+
+  const commonFolders = [
+    "Desktop",
+    "Downloads",
+    "Documents",
+    "Pictures",
+    "Videos",
+    "Music"
+  ];
+
+  return commonFolders
+    .map((folder) => ({
+      name: folder,
+      path: path.join(HOME, folder)
+    }))
+    .filter((folder) => fs.existsSync(folder.path));
+
+}
+
+let currentFolder = path.join(HOME, "Downloads");
+let organizeMode = "category"; // category | date
 
 const CATEGORIES = {
   Images: ['.jpg', '.jpeg', '.png', '.gif', '.svg', '.webp', '.ico'],
@@ -22,6 +47,7 @@ const CATEGORIES = {
 
 // this function create a window and load the url 
 function createWindow() {
+  console.log("MAIN PROCESS STARTED");
   mainWindow = new BrowserWindow({
     // initial size hai user resize kar sakta hai
     width: 800,
@@ -88,9 +114,22 @@ function organizeFile(filePath, callback = () => {}) {
     return callback(false);
   }
 
-  const categoryFolder = getCategory(ext);
-  const dateFolderName = getDateFolderName();
-  const targetDir = path.join(downloadsDir, categoryFolder, dateFolderName);
+ const categoryFolder = getCategory(ext);
+
+    let targetDir;
+
+    if (organizeMode === "date") {
+      targetDir = path.join(
+        currentFolder,
+        categoryFolder,
+        getDateFolderName()
+      );
+    } else {
+      targetDir = path.join(
+        currentFolder,
+        categoryFolder
+      );
+    }
 
   if (!fs.existsSync(targetDir)) {
     fs.mkdirSync(targetDir, { recursive: true });
@@ -115,12 +154,46 @@ function organizeFile(filePath, callback = () => {}) {
 
     }
 
-    sendLog(`✅ Moved: ${fileName} ➜ ${categoryFolder}/${dateFolderName}`);
+    sendLog(`✅ Moved: ${fileName} ➜ ${targetDir}`);
     callback(true);
 
   });
 
 }
+
+ipcMain.handle("get-home-folders", () => {
+  return getHomeFolders();
+});
+
+ipcMain.on("change-folder", (event, folderPath) => {
+
+    if (!fs.existsSync(folderPath)) {
+        sendLog("❌ Invalid folder.");
+        return;
+    }
+
+    currentFolder = folderPath;
+
+    sendLog(`📂 Folder changed to ${path.basename(folderPath)}`);
+
+    if (watcher) {
+        watcher.close();
+        watcher = null;
+
+        startWatcher();
+
+        sendLog("👀 Watching new folder...");
+    }
+
+});
+
+ipcMain.on("change-mode", (event, mode) => {
+
+  organizeMode = mode;
+
+  sendLog(`📂 Organize Mode changed to ${mode}`);
+
+});
 
 ipcMain.on("organise-existing-file", () => {
 
@@ -128,11 +201,14 @@ ipcMain.on("organise-existing-file", () => {
     sendLog("⚠️ File organization is already in progress.");
     return;
   }
+  console.log('start in function')
 
   isOrganise = true;
 
-  const files = fs.readdirSync(downloadsDir).filter((file) => {
-    const filePath = path.join(downloadsDir, file);
+  const files = fs.readdirSync(currentFolder).filter((file) => {
+    console.log('in filtering process')
+    if (file === "desktop.ini") return false;
+    const filePath = path.join(currentFolder, file);
     return fs.existsSync(filePath) && fs.statSync(filePath).isFile();
   });
 
@@ -149,11 +225,18 @@ ipcMain.on("organise-existing-file", () => {
   let success = 0;
   let failed = 0;
 
-  files.forEach((file) => {
+  files.forEach((file,index) => {
 
-    const filePath = path.join(downloadsDir, file);
+    console.log('in for each loop')
+    
+
+    const filePath = path.join(currentFolder, file);
+
+    console.log('filepath :',filePath)
+   
 
     organizeFile(filePath, (ok) => {
+       console.log(file, ok ? "SUCCESS" : "FAILED");
 
       completed++;
 
@@ -164,12 +247,14 @@ ipcMain.on("organise-existing-file", () => {
       }
 
       if (completed === files.length) {
-
         isOrganise = false;
-
-        sendLog(`✅ ${success} files moved`);
-        sendLog(`❌ ${failed} files failed`);
-
+        if(success>0){
+          sendLog(`✅ ${success} files moved`);
+        }
+        if(failed>0){
+          sendLog(`❌ ${failed} files failed`);
+        }
+        
         mainWindow.webContents.send("organize-complete");
       }
 
@@ -179,26 +264,30 @@ ipcMain.on("organise-existing-file", () => {
 
 });;
 
+function startWatcher() {
+    watcher = chokidar.watch(currentFolder, {
+        depth: 0,
+        ignoreInitial: true,
+        awaitWriteFinish: {
+            stabilityThreshold: 2000,
+            pollInterval: 200
+        }
+    });
+
+    watcher.on("add", (filePath) => {
+        if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
+            organizeFile(filePath);
+        }
+    });
+}
+
 // IPC Controls (Start / Stop from React UI) create chowkidar object and send the filepath
 ipcMain.on('start-organizer', () => {
   if (watcher) return;
 
-  watcher = chokidar.watch(downloadsDir, {
-    depth: 0,
-    ignoreInitial: true,
-    awaitWriteFinish: {
-      stabilityThreshold: 2000,
-      pollInterval: 200
-    }
-  });
+ startWatcher();
 
-  watcher.on('add', (filePath) => {
-    if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
-      organizeFile(filePath);
-    }
-  });
-
-  sendLog('🚀 Organizer Started watching Downloads folder...');// this send the message to the rect
+  sendLog(`🚀 Watching ${path.basename(currentFolder)} folder...`);// this send the message to the rect
 });
 
 ipcMain.on('stop-organizer', () => {

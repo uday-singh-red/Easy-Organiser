@@ -5,6 +5,10 @@ function App() {
   const [logs, setLogs] = useState([]);
   const logEndRef = useRef(null);
   const [isOrganizing, setIsOrganizing] = useState(false);
+  const [folders, setFolders] = useState([]);
+  const [showFolderModal, setShowFolderModal] = useState(false);
+  const [selectedFolder, setSelectedFolder] = useState(null);
+  const [mode, setMode] = useState("category");
 
   // Auto-scroll logs to bottom when new logs arrive
   useEffect(() => {
@@ -27,10 +31,48 @@ function App() {
     }
   };
 
+  const handleModeChange = (e) => {
+  const value = e.target.value;
+
+  setMode(value);
+
+  window.electronAPI.changeMode(value);
+};
+
+useEffect(() => {
+
+  async function loadFolders() {
+
+    const data = await window.electronAPI.getHomeFolders();
+
+    setFolders(data);
+
+    if (data.length > 0) {
+      setSelectedFolder(data[0]);
+    }
+
+  }
+
+  loadFolders();
+
+}, []);
+ 
+
+ const handleFolderChange = () => {
+
+  if (!selectedFolder) return;
+
+  window.electronAPI.changeFolder(selectedFolder.path);
+
+  setShowFolderModal(false);
+
+};
+
   const handleStop = () => {
     if (window.electronAPI) {
       window.electronAPI.stopOrganizer();
       setIsRunning(false);
+      setIsOrganizing(false)
     }
   };
 
@@ -113,6 +155,21 @@ function App() {
                 {isOrganizing ? "📂 Organizing..." : "📂 Organize Existing Files"}
               </button>
 
+             <button
+  onClick={() => setShowFolderModal(true)}
+  className="w-full py-3 px-4 bg-blue-700 hover:bg-blue-600 rounded-xl"
+>
+  📁 Select Folder
+</button>
+{selectedFolder && (
+  <div className="text-xs text-slate-400 mt-2">
+    Selected Folder :
+    <span className="text-white ml-2">
+      {selectedFolder.name}
+    </span>
+  </div>
+)}
+
           </div>
 
           {/* Quick Info Card */}
@@ -185,6 +242,85 @@ function App() {
         <span>File Organizer Pro • Electron Desktop App</span>
         <span>Node.js Environment Active</span>
       </footer>
+
+      {
+showFolderModal && (
+
+<div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
+
+    <div className="bg-slate-900 w-[420px] rounded-2xl border border-slate-700 p-6">
+
+        <h2 className="text-xl font-semibold mb-5">
+            Select Folder
+        </h2>
+
+        <div className="max-h-72 overflow-y-auto space-y-2">
+
+            {
+                folders.map(folder => (
+
+                    <button
+
+                        key={folder.path}
+
+                        onClick={() => setSelectedFolder(folder)}
+
+                        className={`w-full text-left px-4 py-3 rounded-lg transition
+                        ${
+                            selectedFolder?.path===folder.path
+                            ? "bg-blue-600"
+                            : "bg-slate-800 hover:bg-slate-700"
+                        }`}
+
+                    >
+
+                        📁 {folder.name}
+
+                    </button>
+
+                ))
+            }
+
+        </div>
+
+        <div className="flex flex-col gap-2">
+  <label className="text-xs text-slate-400">
+    Organize Mode
+  </label>
+
+  <select
+    value={mode}
+    onChange={handleModeChange}
+    className="w-full bg-slate-800 border border-slate-700 rounded-xl p-3 text-white outline-none"
+  >
+    <option value="category">Category Only</option>
+    <option value="date">Category + Date</option>
+  </select>
+</div>
+
+        <div className="flex justify-end gap-3 mt-6">
+
+            <button
+                onClick={()=>setShowFolderModal(false)}
+                className="px-4 py-2 bg-slate-700 rounded-lg"
+            >
+                Cancel
+            </button>
+
+            <button
+                onClick={handleFolderChange}
+                className="px-4 py-2 bg-blue-600 rounded-lg"
+            >
+                Select
+            </button>
+
+        </div>
+
+    </div>
+
+</div>
+
+)}
     </div>
   );
 }
