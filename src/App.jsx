@@ -9,6 +9,10 @@ function App() {
   const [showFolderModal, setShowFolderModal] = useState(false);
   const [selectedFolder, setSelectedFolder] = useState(null);
   const [mode, setMode] = useState("category");
+  const [processes, setProcesses] = useState([]);
+  const [showProcesses, setShowProcesses] = useState(false);
+
+const [loadingProcesses, setLoadingProcesses] = useState(false);
 
   // Auto-scroll logs to bottom when new logs arrive
   useEffect(() => {
@@ -95,6 +99,19 @@ useEffect(() => {
     setLogs([]);
   };
 
+const handleShowProcesses = async () => {
+  setLoadingProcesses(true);
+
+  try {
+    const data = await window.electronAPI.getProcesses();
+    setProcesses(data);
+  } catch (error) {
+    console.error("Failed to load processes:", error);
+  } finally {
+    setLoadingProcesses(false);
+  }
+};
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 p-6 flex flex-col font-sans select-none">
       {/* Top Header */}
@@ -146,6 +163,14 @@ useEffect(() => {
                 <span>Stop Watching</span>
               </button>
             )}
+
+<button
+  onClick={handleShowProcesses}
+  disabled={loadingProcesses}
+  className="w-full py-3 px-4 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-white font-medium rounded-xl transition-all duration-200 cursor-pointer flex items-center justify-center gap-2"
+>
+  {loadingProcesses ? "⚙️ Loading..." : "🖥️ Running Processes"}
+</button>
 
               <button
                 onClick={handleOrganizeExisting}
@@ -209,6 +234,34 @@ useEffect(() => {
 
           {/* Terminal Console Viewport */}
           <div className="flex-1 p-4 font-mono text-xs overflow-y-auto max-h-[380px] space-y-2 leading-relaxed">
+            {processes.length > 0 && (
+  <div className="mb-4 space-y-2">
+
+    <div className="text-slate-400 text-xs">
+      Running Processes: {processes.length}
+    </div>
+
+    {processes.map((process) => (
+      <div
+        key={process.pid}
+        className="p-2 rounded border bg-slate-950/50 border-slate-800/60 text-emerald-400/90"
+      >
+        <span className="text-white">
+          {process.name}
+        </span>
+
+        <span className="text-slate-500 ml-3">
+          PID: {process.pid}
+        </span>
+
+        <span className="text-slate-500 ml-3">
+          {process.memory}
+        </span>
+      </div>
+    ))}
+
+  </div>
+)}
             {logs.length === 0 ? (
               <div className="h-full flex flex-col items-center justify-center text-slate-600 gap-2 my-12">
                 <span className="text-2xl opacity-40">⌨️</span>
@@ -320,6 +373,76 @@ showFolderModal && (
 
 </div>
 
+)}
+
+{showProcesses && (
+  <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50">
+
+    <div className="bg-slate-900 w-[700px] max-h-[80vh] rounded-2xl border border-slate-700 p-6 flex flex-col">
+
+      <div className="flex items-center justify-between mb-5">
+
+        <div>
+          <h2 className="text-xl font-semibold text-white">
+            Running Processes
+          </h2>
+
+          <p className="text-xs text-slate-400 mt-1">
+            {processes.length} processes detected
+          </p>
+        </div>
+
+        <button
+          onClick={() => setShowProcesses(false)}
+          className="px-3 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg"
+        >
+          ✕
+        </button>
+
+      </div>
+
+      <div className="overflow-y-auto space-y-2">
+
+        {processes.map((process) => (
+
+          <div
+            key={process.pid}
+            className="bg-slate-800 border border-slate-700 rounded-lg p-3"
+          >
+
+            <div className="flex items-center justify-between">
+
+              <div>
+                <p className="text-sm text-white font-medium">
+                  {process.name}
+                </p>
+
+                <p className="text-xs text-slate-400">
+                  PID: {process.pid}
+                </p>
+              </div>
+
+              <div className="text-right">
+                <p className="text-xs text-slate-300">
+                  {process.memory}
+                </p>
+
+                <p className="text-xs text-slate-500">
+                  {process.sessionName}
+                </p>
+              </div>
+
+            </div>
+
+          </div>
+
+        ))}
+
+      </div>
+
+    </div>
+
+  </div>
 )}
     </div>
   );

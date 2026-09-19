@@ -1,5 +1,8 @@
 const { app, BrowserWindow, ipcMain } = require('electron');// electron require some methods for operations
 
+const { getProcesses } = require("./services/processManager.js");
+
+
 const os = require("os");
 const path = require('path');
 const fs = require('fs');
@@ -165,6 +168,18 @@ ipcMain.handle("get-home-folders", () => {
   return getHomeFolders();
 });
 
+ipcMain.handle("get-processes", async () => {
+  try {
+    const processes = await getProcesses();
+
+    console.log("Processes found:", processes.length);
+
+    return processes;
+  } catch (error) {
+    console.error("Failed to get processes:", error);
+    return [];
+  }
+});
 ipcMain.on("change-folder", (event, folderPath) => {
 
     if (!fs.existsSync(folderPath)) {
